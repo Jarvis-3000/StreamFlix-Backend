@@ -1,0 +1,17 @@
+# Persisted JSON data (runtime state, not source)
+/data/
+
+# Secrets
+.env
+
+# Uploaded / sample media
+/uploads/
+*.mp4
+
+# Build output
+/app
+/bin/
+
+# macOS
+.DS_Store
+
