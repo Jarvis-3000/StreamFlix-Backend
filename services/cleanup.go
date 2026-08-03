@@ -15,7 +15,7 @@ import (
 )
 
 // CleanupInterval is how often local disk is swept.
-const CleanupInterval = 2 * time.Minute
+const CleanupInterval = 5 * time.Minute
 
 // uploadDir is where incoming videos are stored. It mirrors
 // controllers.UploadDir, which cannot be referenced here: controllers imports
@@ -35,7 +35,7 @@ const cleanupTimeout = 30 * time.Second
 // media.create arriving with the metadata. That gap is deliberately open-ended
 // — the upload registry outlives restarts precisely so a user can close the tab
 // and finish the form later — so this is generous.
-const orphanAge = 1 * time.Minute
+const orphanAge = 60 * time.Minute
 
 // Cleanup reclaims local disk. The uploaded source and the transcoding output
 // are working files: once a video is in the bucket, playback is served from
