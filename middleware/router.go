@@ -13,7 +13,20 @@ import (
 // Route is the single JSON-RPC entry point (POST /rpc). It reads the body once,
 // decodes the JSON-RPC envelope, dispatches on the method name, and writes a
 // JSON-RPC 2.0 response.
+//
+// Every call is a POST regardless of what it does — the method name in the body
+// carries the verb, so the HTTP method never varies. Enforcing that here means
+// no individual handler has to.
 func Route(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeRPC(w, rpcResponse{
+			JSONRPC: "2.0",
+			Error:   &rpcError{Code: codeInvalidRequest, Message: "rpc requires POST"},
+			ID:      jsonNull,
+		})
+		return
+	}
+
 	var req rpcRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeRPC(w, rpcResponse{
@@ -95,7 +108,20 @@ func handleUser(method string, params json.RawMessage) (any, error) {
 
 // handleMedia dispatches the method part of a "media.*" call.
 func handleMedia(method string, params json.RawMessage) (any, error) {
-	return nil, errMethodNotFound
+	switch method {
+	case models.MEDIA_CREATE:
+		return controllers.CreateMedia(params)
+	case models.MEDIA_GET:
+		return controllers.GetMediaByID(params)
+	case models.MEDIA_LIST:
+		return controllers.ListMedia(params)
+	case models.MEDIA_UPDATE:
+		return controllers.UpdateMedia(params)
+	case models.MEDIA_DELETE:
+		return controllers.DeleteMedia(params)
+	default:
+		return nil, errMethodNotFound
+	}
 }
 
 // errMethodNotFound is returned by a resource handler for an unknown method.

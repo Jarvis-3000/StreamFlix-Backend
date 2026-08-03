@@ -11,6 +11,8 @@ import (
 	"streamflix-backend/internal/elasticsearch"
 	"streamflix-backend/internal/elasticsearch/media"
 	"streamflix-backend/server"
+	"streamflix-backend/services"
+	"streamflix-backend/store"
 
 	"github.com/joho/godotenv"
 )
@@ -25,7 +27,18 @@ func main() {
 	initializeUpload()
 	initializeDB()
 
+	// Start reclaiming local disk. This runs after initializeDB because the
+	// sweeper needs the media repository to tell a finished video from one that
+	// is still transcoding.
+	initializeCleanup()
+
+	// Railway and Render inject the port to listen on as PORT and route
+	// external traffic to it. Honour that first, then an explicit SERVER_ADDR
+	// for local overrides, then fall back to the development default.
 	addr := os.Getenv("SERVER_ADDR")
+	if port := os.Getenv("PORT"); port != "" {
+		addr = ":" + port
+	}
 	if addr == "" {
 		addr = ":8080"
 	}
@@ -41,6 +54,14 @@ func initializeUpload() {
 	if err := os.MkdirAll(controllers.UploadDir, 0o755); err != nil {
 		log.Fatalf("could not create upload dir %q: %v", controllers.UploadDir, err)
 	}
+}
+
+// Start the background sweep that deletes local files once a video is ready in
+// the bucket. Tied to the process lifetime: the server blocks until exit, so
+// there is nothing to cancel it from, and each pass is short and idempotent.
+func initializeCleanup() {
+	services.StartCleanup(context.Background())
+	log.Printf("cleanup: sweeping every %s", services.CleanupInterval)
 }
 
 // dbInitTimeout bounds the startup handshake with Elasticsearch, so an
@@ -72,6 +93,10 @@ func initializeDB() {
 	if err := media.EnsureIndex(ctx, client, cfg.MediaIndex); err != nil {
 		log.Fatalf("elasticsearch: %v", err)
 	}
+
+	// Hand the repository to the controllers before we start serving, so the
+	// first media request finds it already wired up.
+	store.SetMediaRepository(media.NewRepository(client, cfg.MediaIndex))
 
 	log.Printf("elasticsearch: connected, index %q ready", cfg.MediaIndex)
 }

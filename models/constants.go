@@ -12,3 +12,11 @@ const (
 	USER_UPDATE = "update"
 	USER_DELETE = "delete"
 )
+
+const (
+	MEDIA_CREATE = "create"
+	MEDIA_GET    = "get"
+	MEDIA_LIST   = "list"
+	MEDIA_UPDATE = "update"
+	MEDIA_DELETE = "delete"
+)

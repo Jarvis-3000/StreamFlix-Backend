@@ -13,45 +13,99 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
-// UploadToServer uploads an entire local HLS folder (the .m3u8 playlist plus
-// its .ts chunks) to the Supabase S3 bucket and returns the public URL of the
-// playlist.
+// UploadHLS uploads a local HLS folder — the master playlist plus each
+// rendition's playlist and .ts chunks — to the Supabase S3 bucket under
+// <videoID>/hls/, and returns the public URL of the master playlist.
 //
-// The folder is uploaded under a key prefix derived from its own name, e.g.
+//	./processed/<videoID>/hls/  ->  <bucket>/<videoID>/hls/master.m3u8
+//	                                <bucket>/<videoID>/hls/480p/playlist.m3u8
+//	                                <bucket>/<videoID>/hls/480p/segment000.ts
 //
-//	./processed/movie/  ->  <bucket>/movie/index.m3u8, <bucket>/movie/segment_000.ts, ...
-//
-// so the returned playlist URL points at the same directory layout the player
-// expects (relative .ts references in the playlist keep working).
+// The bucket mirrors the local tree exactly, so the relative references inside
+// the playlists keep resolving once served.
 //
 // Supabase S3 config is read from the environment:
 //
 //	SUPABASE_S3_ENDPOINT, SUPABASE_S3_REGION,
 //	SUPABASE_S3_ACCESS_KEY_ID, SUPABASE_S3_SECRET_ACCESS_KEY,
 //	SUPABASE_BUCKET
-func UploadToServer(ctx context.Context, folderPath string) (string, error) {
+func UploadHLS(ctx context.Context, videoID, folderPath string) (string, error) {
+	prefix := videoID + "/" + HLSDir
+
+	keys, err := uploadFolder(ctx, folderPath, prefix)
+	if err != nil {
+		return "", err
+	}
+
 	cfg, err := loadSupabaseConfig()
 	if err != nil {
 		return "", err
 	}
 
+	// The master playlist is the URL players are pointed at; the rendition
+	// playlists are reached through it.
+	masterKey, ok := keys["master.m3u8"]
+	if !ok {
+		return "", fmt.Errorf("no master.m3u8 found in %q", folderPath)
+	}
+	return publicURL(cfg, masterKey), nil
+}
+
+// UploadThumbnails uploads a local thumbnails folder to the Supabase S3 bucket
+// under <videoID>/thumbnails/ and returns the public URLs of the stills, in the
+// same order as the localPaths given.
+//
+// Ordering matters to the caller: the first still is the one recorded on the
+// media document as the poster, so the result cannot be a bare directory walk
+// (which would come back in whatever order the filesystem yields).
+func UploadThumbnails(ctx context.Context, videoID, folderPath string, localPaths []string) ([]string, error) {
+	prefix := videoID + "/" + ThumbnailsDir
+
+	keys, err := uploadFolder(ctx, folderPath, prefix)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg, err := loadSupabaseConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	urls := make([]string, 0, len(localPaths))
+	for _, p := range localPaths {
+		rel, err := filepath.Rel(folderPath, p)
+		if err != nil {
+			return nil, err
+		}
+		key, ok := keys[filepath.ToSlash(rel)]
+		if !ok {
+			return nil, fmt.Errorf("thumbnail %q was not uploaded", rel)
+		}
+		urls = append(urls, publicURL(cfg, key))
+	}
+	return urls, nil
+}
+
+// uploadFolder walks folderPath and uploads every file beneath it to the bucket
+// under keyPrefix, preserving relative paths. It returns a map from each file's
+// slash-separated path relative to folderPath to the S3 key it was written to.
+func uploadFolder(ctx context.Context, folderPath, keyPrefix string) (map[string]string, error) {
+	cfg, err := loadSupabaseConfig()
+	if err != nil {
+		return nil, err
+	}
+
 	info, err := os.Stat(folderPath)
 	if err != nil {
-		return "", fmt.Errorf("folder not found: %w", err)
+		return nil, fmt.Errorf("folder not found: %w", err)
 	}
 	if !info.IsDir() {
-		return "", fmt.Errorf("%q is not a directory", folderPath)
+		return nil, fmt.Errorf("%q is not a directory", folderPath)
 	}
 
-	// Use the folder's own name as the key prefix in the bucket.
-	prefix := filepath.Base(folderPath)
-
 	client := newSupabaseS3Client(cfg)
+	keys := make(map[string]string)
 
-	// Walk the folder and upload every file, preserving relative paths under
-	// the prefix. HLS folders are flat in practice, but WalkDir handles any
-	// nesting correctly.
-	var playlistKey string
 	err = filepath.WalkDir(folderPath, func(path string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -65,27 +119,25 @@ func UploadToServer(ctx context.Context, folderPath string) (string, error) {
 			return err
 		}
 		// S3 keys always use forward slashes, regardless of OS.
-		key := prefix + "/" + filepath.ToSlash(rel)
+		rel = filepath.ToSlash(rel)
+		key := keyPrefix + "/" + rel
 
 		if err := uploadFile(ctx, client, cfg.bucket, key, path); err != nil {
 			return fmt.Errorf("uploading %q: %w", rel, err)
 		}
 		fmt.Printf("uploaded %s -> %s\n", rel, key)
 
-		if strings.HasSuffix(strings.ToLower(rel), ".m3u8") {
-			playlistKey = key
-		}
+		keys[rel] = key
 		return nil
 	})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	if playlistKey == "" {
-		return "", fmt.Errorf("no .m3u8 playlist found in %q", folderPath)
+	if len(keys) == 0 {
+		return nil, fmt.Errorf("no files to upload in %q", folderPath)
 	}
-
-	return publicURL(cfg, playlistKey), nil
+	return keys, nil
 }
 
 // uploadFile streams a single local file to the given S3 key.
