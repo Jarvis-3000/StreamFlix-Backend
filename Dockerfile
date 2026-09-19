@@ -1,5 +1,7 @@
-# Build the binary against the Go version declared in go.mod.
-FROM golang:1.24-bookworm AS build
+# Build the binary against the Go version declared in go.mod. This tag must be
+# >= the go directive there, or `go mod download` fails outright: the toolchain
+# in the image cannot build a module that asks for a newer one.
+FROM golang:1.25-bookworm AS build
 
 WORKDIR /src
 
