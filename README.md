@@ -180,4 +180,4 @@ existing `cmd/app/main.go` can coexist or be retired at that point.
 | Phase 2 | REST API (Gin), PostgreSQL, DigitalOcean Spaces upload |
 | Phase 3 | Authentication (JWT), user management |
 | Phase 4 | Kafka event streaming, background workers |
-| Phase 5 | Elasticsearch for search and recommendations |
+| Phase 5 | MongoDB Atlas Search for search and recommendations |

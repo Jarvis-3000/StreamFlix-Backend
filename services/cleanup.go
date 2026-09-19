@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	esclient "streamflix-backend/internal/elasticsearch"
+	mongoclient "streamflix-backend/internal/mongodb"
 	"streamflix-backend/models"
 	"streamflix-backend/store"
 )
@@ -22,13 +22,13 @@ const CleanupInterval = 5 * time.Minute
 // this package, so importing it back would be a cycle.
 const uploadDir = "./uploads"
 
-// cleanupTimeout bounds one sweep's Elasticsearch lookups.
+// cleanupTimeout bounds one sweep's MongoDB lookups.
 const cleanupTimeout = 30 * time.Second
 
 // orphanAge is how long a video with no media document may sit on disk before
 // it is treated as abandoned. It covers two cases that no status check can:
 // an upload whose owner never submitted the metadata form, and a video whose
-// document was deleted from Elasticsearch. Neither will ever be reported ready,
+// document was deleted from MongoDB. Neither will ever be reported ready,
 // so without this they would occupy disk forever.
 //
 // It has to comfortably exceed the gap between /upload returning a video id and
@@ -46,7 +46,7 @@ const orphanAge = 60 * time.Minute
 // deleting from under the other. A crash mid-transcode would skip an inline
 // cleanup anyway.
 //
-// Two things get deleted. A video Elasticsearch reports as ready — the work is
+// Two things get deleted. A video MongoDB reports as ready — the work is
 // done and the bucket has it. And a video with no document at all, once it is
 // older than orphanAge: nothing will ever mark it ready, so it would otherwise
 // sit forever. Anything still processing or uploading is left alone, so a sweep
@@ -71,7 +71,7 @@ func StartCleanup(ctx context.Context) {
 }
 
 // RunCleanup performs one sweep: collect the video ids present on local disk,
-// then delete the files of every one Elasticsearch reports as ready.
+// then delete the files of every one MongoDB reports as ready.
 func RunCleanup(ctx context.Context) {
 	repo, err := store.MediaRepository()
 	if err != nil {
@@ -88,9 +88,9 @@ func RunCleanup(ctx context.Context) {
 		if err != nil {
 			// Only a confirmed "no such document" is actionable. Any other
 			// error — an unreachable cluster, a timeout — says nothing about
-			// the video, and treating it as missing would let a single ES
-			// outage delete every pending upload on disk.
-			if !errors.Is(err, esclient.ErrNotFound) {
+			// the video, and treating it as missing would let a single
+			// database outage delete every pending upload on disk.
+			if !errors.Is(err, mongoclient.ErrNotFound) {
 				continue
 			}
 

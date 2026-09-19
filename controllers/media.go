@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	esclient "streamflix-backend/internal/elasticsearch"
+	mongoclient "streamflix-backend/internal/mongodb"
 	"streamflix-backend/models"
 	"streamflix-backend/services"
 	"streamflix-backend/store"
@@ -49,7 +49,7 @@ func CreateMedia(params json.RawMessage) (*models.Media, error) {
 	err = repo.Create(ctx, *doc)
 
 	if err != nil {
-		if errors.Is(err, esclient.ErrAlreadyExists) {
+		if errors.Is(err, mongoclient.ErrAlreadyExists) {
 			return nil, fmt.Errorf("media already exists for video %s", doc.ID)
 		}
 		log.Printf("media: create %q: %v", doc.ID, err)
@@ -90,7 +90,7 @@ func GetMediaByID(params json.RawMessage) (*models.Media, error) {
 
 	doc, err := repo.FindByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, esclient.ErrNotFound) {
+		if errors.Is(err, mongoclient.ErrNotFound) {
 			return nil, fmt.Errorf("media not found: %s", id)
 		}
 		log.Printf("media: find %q: %v", id, err)
@@ -416,7 +416,7 @@ func setMediaStatus(mediaID string, status models.Status, url string) {
 // field it didn't touch. The pipeline's concurrent writers — processVideo and
 // processMetadata — deliberately mutate disjoint fields to keep that window
 // harmless. Adding a third writer, or letting either touch the other's fields,
-// would need optimistic concurrency (seq_no/primary_term) instead.
+// would need a targeted $set update instead of this whole-document replace.
 func updateMedia(mediaID, what string, mutate func(*models.Media)) {
 	repo, err := store.MediaRepository()
 	if err != nil {

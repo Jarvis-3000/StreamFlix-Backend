@@ -25,7 +25,7 @@ const UploadDir = "./uploads"
 //
 // 500 MB is sized against the disk a video actually costs, which is the source
 // plus the transcode output: both are on disk at once, because cleanup only
-// deletes the pair once Elasticsearch reports the video ready. The single 480p
+// deletes the pair once MongoDB reports the video ready. The single 480p
 // rendition runs at 1400k video + 128k audio, so output grows at roughly 11 MB
 // per minute of footage no matter how big the source was. A 500 MB upload is
 // about twelve minutes of phone video, so peak disk lands near 640 MB — inside

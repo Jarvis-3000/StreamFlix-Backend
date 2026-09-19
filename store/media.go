@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"sync"
 
-	"streamflix-backend/internal/elasticsearch/media"
+	"streamflix-backend/internal/mongodb/media"
 )
 
 // mediaRepo is the process-wide media repository. Unlike the user and upload
-// stores it cannot be built at package-init time: it needs a live
-// Elasticsearch client, which only exists after config is loaded. main wires it
-// up via SetMediaRepository during startup.
+// stores it cannot be built at package-init time: it needs a live MongoDB
+// client, which only exists after config is loaded. main wires it up via
+// SetMediaRepository during startup.
 var (
 	mediaRepoMu sync.RWMutex
 	mediaRepo   *media.Repository

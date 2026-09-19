@@ -8,8 +8,8 @@ import (
 
 	"streamflix-backend/config"
 	"streamflix-backend/controllers"
-	"streamflix-backend/internal/elasticsearch"
-	"streamflix-backend/internal/elasticsearch/media"
+	"streamflix-backend/internal/mongodb"
+	"streamflix-backend/internal/mongodb/media"
 	"streamflix-backend/server"
 	"streamflix-backend/services"
 	"streamflix-backend/store"
@@ -64,39 +64,39 @@ func initializeCleanup() {
 	log.Printf("cleanup: sweeping every %s", services.CleanupInterval)
 }
 
-// dbInitTimeout bounds the startup handshake with Elasticsearch, so an
-// unreachable cluster fails fast instead of hanging the process.
+// dbInitTimeout bounds the startup handshake with MongoDB, so an unreachable
+// cluster fails fast instead of hanging the process.
 const dbInitTimeout = 15 * time.Second
 
-// Connect to Elasticsearch and make sure every index we depend on exists with
-// the right mappings. Misconfiguration or an unreachable cluster is fatal:
-// the API is useless without its datastore, so we fail at startup rather than
-// on the first request.
+// Connect to MongoDB Atlas and make sure every collection we depend on has its
+// indexes. Misconfiguration or an unreachable cluster is fatal: the API is
+// useless without its datastore, so we fail at startup rather than on the first
+// request.
 func initializeDB() {
-	cfg, err := config.LoadElasticsearch()
+	cfg, err := config.LoadMongoDB()
 	if err != nil {
-		log.Fatalf("elasticsearch: %v", err)
-	}
-
-	client, err := elasticsearch.Shared(cfg)
-	if err != nil {
-		log.Fatalf("elasticsearch: %v", err)
+		log.Fatalf("mongodb: %v", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), dbInitTimeout)
 	defer cancel()
 
-	if err := client.Ping(ctx); err != nil {
-		log.Fatalf("elasticsearch: unreachable: %v", err)
+	client, err := mongodb.Shared(ctx, cfg)
+	if err != nil {
+		log.Fatalf("mongodb: %v", err)
 	}
 
-	if err := media.EnsureIndex(ctx, client, cfg.MediaIndex); err != nil {
-		log.Fatalf("elasticsearch: %v", err)
+	if err := client.Ping(ctx); err != nil {
+		log.Fatalf("mongodb: unreachable: %v", err)
+	}
+
+	if err := media.EnsureIndexes(ctx, client, cfg.MediaCollection); err != nil {
+		log.Fatalf("mongodb: %v", err)
 	}
 
 	// Hand the repository to the controllers before we start serving, so the
 	// first media request finds it already wired up.
-	store.SetMediaRepository(media.NewRepository(client, cfg.MediaIndex))
+	store.SetMediaRepository(media.NewRepository(client, cfg.MediaCollection))
 
-	log.Printf("elasticsearch: connected, index %q ready", cfg.MediaIndex)
+	log.Printf("mongodb: connected to %q, collection %q ready", cfg.Database, cfg.MediaCollection)
 }

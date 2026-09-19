@@ -21,25 +21,33 @@ const (
 	StatusFailed     Status = "failed"
 )
 
+// Media is the metadata document for one video.
+//
+// Every field carries a bson tag alongside its json one: without it the driver
+// derives the BSON name by lowercasing the Go field ("creatorid"), which would
+// not match the indexes or the queries that filter on "creator_id". The bson
+// names are kept identical to the json ones so a document reads the same in the
+// database as it does on the wire.
 type Media struct {
-	ID          string     `json:"id"`
-	CreatorID   string     `json:"creator_id"`
-	Title       string     `json:"title"`
-	Description string     `json:"description"`
-	Visibility  Visibility `json:"visibility"`
-	Status      Status     `json:"status"`
-	Category    string     `json:"category"`
-	Thumbnail   string     `json:"thumbnail"`
-	URL         string     `json:"url"`
-	Duration    int        `json:"duration"`
-	Qualities   []string   `json:"qualities"` // rendition labels, e.g. ["720p","1080p"].
-	Tags        []string   `json:"tags"`      // free-form keyword labels for filtering and discovery.
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	ID          string     `json:"id" bson:"id"`
+	CreatorID   string     `json:"creator_id" bson:"creator_id"`
+	Title       string     `json:"title" bson:"title"`
+	Description string     `json:"description" bson:"description"`
+	Visibility  Visibility `json:"visibility" bson:"visibility"`
+	Status      Status     `json:"status" bson:"status"`
+	Category    string     `json:"category" bson:"category"`
+	Thumbnail   string     `json:"thumbnail" bson:"thumbnail"`
+	URL         string     `json:"url" bson:"url"`
+	Duration    int        `json:"duration" bson:"duration"`
+	Qualities   []string   `json:"qualities" bson:"qualities"` // rendition labels, e.g. ["720p","1080p"].
+	Tags        []string   `json:"tags" bson:"tags"`           // free-form keyword labels for filtering and discovery.
+	CreatedAt   time.Time  `json:"created_at" bson:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at" bson:"updated_at"`
 }
 
-// EntityID implements elasticsearch.Entity, letting the generic repository
-// address this document by id without knowing which field holds it.
+// EntityID implements mongodb.Entity, letting the generic repository address
+// this document by id without knowing which field holds it. The repository
+// copies this value into the document's _id.
 func (m Media) EntityID() string { return m.ID }
 
 // Upload is the record of a video file received by POST /upload and parked on
@@ -47,9 +55,9 @@ func (m Media) EntityID() string { return m.ID }
 // it was given is real and learn where the bytes are.
 //
 // It does not track whether a media document was built from it: the document id
-// is the video id, and Elasticsearch rejects a duplicate id outright, so
-// publishing the same upload twice is already impossible without a second flag
-// here to keep in sync.
+// is the video id and lands in MongoDB's unique _id, so a duplicate insert is
+// rejected outright and publishing the same upload twice is already impossible
+// without a second flag here to keep in sync.
 //
 // It is deliberately not the media document: an upload is raw bytes plus the
 // little we know from the multipart header, with no user-supplied metadata.

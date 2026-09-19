@@ -8,6 +8,9 @@
 /uploads/
 *.mp4
 
+# Transcoding output (HLS segments, thumbnails) - runtime artifacts
+/processed/
+
 # Build output
 /app
 /bin/
